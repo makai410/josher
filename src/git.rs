@@ -1,8 +1,10 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use xshell::{Cmd, Shell, cmd};
+
+use crate::utils::collect_args;
 
 /// Open a git repository.
 pub fn open(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo> {
@@ -125,14 +127,4 @@ impl Repo {
         cmd.set_quiet(!self.verbose);
         cmd
     }
-}
-
-fn collect_args<I, S>(args: I) -> Vec<OsString>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    args.into_iter()
-        .map(|arg| arg.as_ref().to_owned())
-        .collect()
 }

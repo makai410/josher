@@ -10,6 +10,7 @@ name = "josher"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
+directories = "6.0.0"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 xshell = "0.2.7"
