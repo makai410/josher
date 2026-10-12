@@ -13,4 +13,5 @@ clap = { version = "4", features = ["derive", "env"] }
 directories = "6.0.0"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+uuid = { version = "1.28.0", features = ["v7"] }
 xshell = "0.2.7"

@@ -1,6 +1,7 @@
 use std::{ffi::{OsStr, OsString}, path::PathBuf};
 
 use directories::ProjectDirs;
+use uuid::Uuid;
 
 pub fn install_dir() -> PathBuf {
     let Some(prj_dirs) = ProjectDirs::from("dev", "makai410", "josher") else {
@@ -18,4 +19,8 @@ where
     args.into_iter()
         .map(|arg| arg.as_ref().to_owned())
         .collect()
+}
+
+pub fn gen_runid() -> String {
+    Uuid::now_v7().simple().to_string()
 }
