@@ -7,13 +7,10 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Init => {
-            let config = Config {
-                mono_filter: "<mono-filter>".to_string(),
-                subtree_filter: "<subtree-filter>".to_string(),
-            };
+            let config = Config::template();
             config
                 .write(&cli.config)
-                .context("cannot initialize confige file")?;
+                .context("cannot initialize config file")?;
             println!("Created config file at {}", cli.config.display());
             Ok(())
         }
@@ -25,5 +22,6 @@ fn main() -> anyhow::Result<()> {
             let _config = Config::load(&cli.config)?;
             todo!()
         }
+        Command::ClearRefs => todo!(),
     }
 }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-pub const DEFAULT_CONFIG_PATH: &str = "josher.toml";
+const DEFAULT_CONFIG_PATH: &str = "josher.toml";
 
 #[derive(Debug, Parser)]
 #[command(name = "josher")]
@@ -30,4 +30,5 @@ pub enum Command {
 
     /// Push history to mono repo.
     Push,
+    ClearRefs,
 }

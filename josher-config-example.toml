@@ -1,0 +1,11 @@
+[mono]
+org = "rust-lang"
+repo = "rust"
+url = "git@github.com:rust-lang/rust.git"              # or https://github.com/rust-lang/rust.git
+filter = ":/compiler/rustc_public:prefix=rustc_public"
+
+[subtree]
+org = "rust-lang"
+repo = "rustc_public"
+url = "git@github.com:rust-lang/rustc_public.git" # or https://github.com/rust-lang/rustc_public.git
+filter = ":/rustc_public:prefix=rustc_public"

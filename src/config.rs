@@ -5,17 +5,41 @@ use std::path::Path;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
-    /// Projection from the full mono repo history.
-    pub mono_filter: String,
+    pub mono: RepoConfig,
+    pub subtree: RepoConfig,
+}
 
-    /// Projection from the full subtree repo history.
-    pub subtree_filter: String,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RepoConfig {
+    pub org: String,
+    pub repo: String,
+    // FIXME: we need a smart url parser here
+    pub url: String,
+    #[serde(default)]
+    pub filter: String,
 }
 
 impl Config {
+    pub fn template() -> Self {
+        Self {
+            mono: RepoConfig {
+                org: "<organization name>".to_string(),
+                repo: "<mono repository name>".to_string(),
+                url: "url to the repository, both http & ssh are okay".to_string(),
+                filter: "<mono filter>".to_string(),
+            },
+            subtree: RepoConfig {
+                org: "<organization name>".to_string(),
+                repo: "<subtree repository name>".to_string(),
+                url: "url to the repository, both http & ssh are okay".to_string(),
+                filter:
+                    "<subtree filter> (optional, if you want to mirror the entire subtree repo)"
+                        .to_string(),
+            },
+        }
+    }
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let text = std::fs::read_to_string(path)
             .context(format!("cannot load config from {}", path.display()))?;
@@ -38,8 +62,8 @@ impl Config {
 
     fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            !self.mono_filter.trim().is_empty(),
-            "`mono-filter` cannot be empty"
+            !self.mono.filter.trim().is_empty(),
+            "`mono.filter` cannot be empty"
         );
         Ok(())
     }
