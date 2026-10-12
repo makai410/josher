@@ -1,115 +1,61 @@
-use std::{ffi::OsStr, marker::PhantomData, path::PathBuf};
+use std::{fmt::Display, marker::PhantomData};
 
-use anyhow::Context;
-use xshell::{Cmd, Shell, cmd};
+use crate::tools::Repo;
 
-use crate::{
-    JOSH_VERSION,
-    utils::{collect_args, install_dir},
-};
-
-/// Marker for things from subtree repository.
-pub struct Subtree;
-/// Marker for things from mono repository.
-pub struct Mono;
 /// Marker for filtered things.
 pub struct Virtual;
 
-pub struct JoshFilterBin {
-    sh: Shell,
-    path: PathBuf,
-    verbose: bool,
-}
-
-impl JoshFilterBin {
-    fn read<I, S>(&self, args: I) -> anyhow::Result<String>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let command = self.command(args);
-        command.read().context("cannot read command output")
-    }
-
-    fn run<I, S>(&self, args: I) -> anyhow::Result<()>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let command = self.command(args);
-        command.run().context("cannot run command")
-    }
-
-    fn command<'a, I, S>(&'a self, args: I) -> Cmd<'a>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let args = collect_args(args);
-        let mut cmd = self.sh.cmd(&self.path).args(args);
-        cmd.set_quiet(!self.verbose);
-        cmd
-    }
-}
-pub struct JoshFilter<'a> {
+// FIXME: is it really necessary to have a borrow??
+pub struct JoshFilter<'repo, T> {
     inner: String,
-    bin: &'a JoshFilterBin,
-}
-
-impl<'a> JoshFilter<'a> {
-    pub fn new(filter: String, bin: &'a JoshFilterBin) -> anyhow::Result<JoshFilter<'a>> {
-        Ok(Self { inner: filter, bin })
-    }
-
-    pub fn apply<T>(&self, commit: &Commit<T>) -> Commit<Virtual> {
-        // FIXME: check this read output
-        let oid = self
-            .bin
-            .read(&[&self.inner, &commit.oid])
-            .expect("josh-filter failed to run");
-        Commit::<Virtual>::from(oid)
-    }
-
-    pub fn reverse_apply<T>(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
-        // FIXME: I'm 99% sure there's something buggy
-        let oid = self
-            .bin
-            .read(&[&self.inner, &base.oid, "--update", &from.oid, "--reverse"])
-            .expect("josh-filter failed to run");
-        Commit::<T>::from(oid)
-    }
-}
-
-pub struct Projection<'a, T> {
-    filter: JoshFilter<'a>,
+    repo: &'repo Repo,
     _universe: PhantomData<T>,
 }
 
-impl<'a, T> Projection<'a, T> {
-    pub fn new(filter: JoshFilter<'a>) -> Self {
+impl<'repo, T> JoshFilter<'repo, T> {
+    pub fn new(filter: String, repo: &'repo Repo) -> JoshFilter<'repo, T> {
         Self {
-            filter,
+            inner: filter,
+            repo,
             _universe: PhantomData,
         }
     }
+
+    pub fn apply(&self, commit: &Commit<T>) -> Commit<Virtual> {
+        // FIXME: check this read output
+        // FIXME: this should take a ref instead of a commit
+        // FIXME: seems that the exit code here is kinda weird
+        // FIXME: We need a refspec system
+        let oid = self
+            .repo
+            .filter(&self.inner, "todo", "todo")
+            .expect("josh-filter failed to run");
+        Commit::<Virtual>::from("todo".to_string())
+    }
+
+    pub fn reverse_apply(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
+        // FIXME: I'm 99% sure there's something buggy
+        // FIXME: this should take a ref instead of a commit
+        // FIXME: We need a refspec system
+        let oid = self
+            .repo
+            .reverse_filter(&self.inner, "todo", "todo", true)
+            .expect("josh-filter failed to run");
+        Commit::<T>::from("todo".to_string())
+    }
 }
 
-impl<'a> Projection<'a, Subtree> {
-    pub fn project(&self, commit: &Commit<Subtree>) -> Commit<Virtual> {
-        self.filter.apply(commit)
-    }
-
-    pub fn reverse(&self, base: &Commit<Subtree>, from: &Commit<Virtual>) -> Commit<Subtree> {
-        self.filter.reverse_apply(base, from)
-    }
+pub trait Projection<T> {
+    fn project(&self, commit: &Commit<T>) -> Commit<Virtual>;
+    fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T>;
 }
 
-impl<'a> Projection<'a, Mono> {
-    pub fn project(&self, commit: &Commit<Mono>) -> Commit<Virtual> {
-        self.filter.apply(commit)
+impl<'repo, T> Projection<T> for JoshFilter<'repo, T> {
+    fn project(&self, commit: &Commit<T>) -> Commit<Virtual> {
+        self.apply(commit)
     }
-    pub fn reverse(&self, base: &Commit<Mono>, from: &Commit<Virtual>) -> Commit<Mono> {
-        self.filter.reverse_apply(base, from)
+    fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
+        self.reverse_apply(base, from)
     }
 }
 
@@ -118,43 +64,23 @@ pub struct Commit<U> {
     _universe: PhantomData<U>,
 }
 
-impl<U> Commit<U> {
-    pub fn from(oid: String) -> Self {
-        Self {
-            oid,
-            _universe: PhantomData,
-        }
+impl<U> Display for Commit<U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.oid)
     }
 }
 
-pub fn get_josh_filter_bin(verbose: bool) -> anyhow::Result<JoshFilterBin> {
-    let install_dir = install_dir();
-    let josh_filter_path = install_dir.join("bin").join("josh-filter");
-    let install_dir = install_dir.to_str().expect("the path is invalid unicode");
-    println!(
-        "Updating/installing josh-filter binary into `{}`...",
-        josh_filter_path.display()
-    );
+impl<U> PartialEq for Commit<U> {
+    fn eq(&self, other: &Self) -> bool {
+        self.oid == other.oid
+    }
+}
 
-    let sh = Shell::new()?;
-    let args = &[
-        "+stable",
-        "install",
-        "--locked",
-        "--git",
-        "https://github.com/josh-project/josh",
-        "--tag",
-        JOSH_VERSION,
-        "--root",
-        install_dir,
-        "josh-cli",
-    ];
-    let mut cmd = cmd!(sh, "cargo {args...}");
-    cmd.set_quiet(!verbose);
-    cmd.run().context("cannot install josh-filter binary")?;
-    Ok(JoshFilterBin {
-        sh,
-        path: josh_filter_path,
-        verbose,
-    })
+impl<U> From<String> for Commit<U> {
+    fn from(value: String) -> Self {
+        Self {
+            oid: value,
+            _universe: PhantomData,
+        }
+    }
 }

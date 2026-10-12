@@ -1,4 +1,7 @@
-use std::{ffi::{OsStr, OsString}, path::PathBuf};
+use std::{
+    ffi::{OsStr, OsString},
+    path::PathBuf,
+};
 
 use directories::ProjectDirs;
 use uuid::Uuid;
@@ -9,6 +12,14 @@ pub fn install_dir() -> PathBuf {
         return PathBuf::from(".josher").join("cargo");
     };
     prj_dirs.data_local_dir().join("cargo")
+}
+
+pub fn workspace_dir() -> PathBuf {
+    let Some(prj_dirs) = ProjectDirs::from("dev", "makai410", "josher") else {
+        eprintln!("Oops!!! Fallback");
+        return PathBuf::from(".josher").join("workspace");
+    };
+    prj_dirs.cache_dir().join("workspace")
 }
 
 pub fn collect_args<I, S>(args: I) -> Vec<OsString>
