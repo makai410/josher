@@ -115,19 +115,19 @@ impl<'a> Projection<'a, Mono> {
 
 pub struct Commit<U> {
     oid: String,
-    _universes: PhantomData<U>,
+    _universe: PhantomData<U>,
 }
 
 impl<U> Commit<U> {
     pub fn from(oid: String) -> Self {
         Self {
             oid,
-            _universes: PhantomData,
+            _universe: PhantomData,
         }
     }
 }
 
-fn get_josh_filter_bin(verbose: bool) -> anyhow::Result<JoshFilterBin> {
+pub fn get_josh_filter_bin(verbose: bool) -> anyhow::Result<JoshFilterBin> {
     let install_dir = install_dir();
     let josh_filter_path = install_dir.join("bin").join("josh-filter");
     let install_dir = install_dir.to_str().expect("the path is invalid unicode");
@@ -137,7 +137,7 @@ fn get_josh_filter_bin(verbose: bool) -> anyhow::Result<JoshFilterBin> {
     );
 
     let sh = Shell::new()?;
-    let args = vec![
+    let args = &[
         "+stable",
         "install",
         "--locked",
