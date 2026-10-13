@@ -1,7 +1,4 @@
-use crate::{
-    josh::{Commit, Projection, Virtual},
-    tools::Repo,
-};
+use crate::{Commit, josh::Virtual, tools::Repo};
 
 pub struct SyncBikeshed<Dest> {
     // FIXME: naming bikshedding
@@ -64,4 +61,9 @@ pub trait Integration {
         current: &Commit<Virtual>,
         incoming: &Commit<Virtual>,
     ) -> anyhow::Result<Option<Commit<Virtual>>>;
+}
+
+pub trait Projection<T> {
+    fn project(&self, commit: &Commit<T>) -> Commit<Virtual>;
+    fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T>;
 }

@@ -1,8 +1,9 @@
 use anyhow::Context;
 
 use crate::{
+    Commit,
     config::Config,
-    josh::{Commit, JoshFilter, Virtual},
+    josh::{JoshFilter, Virtual},
     sync::Integration,
     tools::{self, Repo},
     utils::{gen_runid, workspace_dir},

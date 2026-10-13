@@ -1,6 +1,6 @@
-use std::{fmt::Display, marker::PhantomData};
+use std::marker::PhantomData;
 
-use crate::tools::Repo;
+use crate::{Commit, sync::Projection, tools::Repo};
 
 /// Marker for filtered things.
 pub struct Virtual;
@@ -45,42 +45,11 @@ impl<'repo, T> JoshFilter<'repo, T> {
     }
 }
 
-pub trait Projection<T> {
-    fn project(&self, commit: &Commit<T>) -> Commit<Virtual>;
-    fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T>;
-}
-
 impl<'repo, T> Projection<T> for JoshFilter<'repo, T> {
     fn project(&self, commit: &Commit<T>) -> Commit<Virtual> {
         self.apply(commit)
     }
     fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
         self.reverse_apply(base, from)
-    }
-}
-
-pub struct Commit<U> {
-    oid: String,
-    _universe: PhantomData<U>,
-}
-
-impl<U> Display for Commit<U> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.oid)
-    }
-}
-
-impl<U> PartialEq for Commit<U> {
-    fn eq(&self, other: &Self) -> bool {
-        self.oid == other.oid
-    }
-}
-
-impl<U> From<String> for Commit<U> {
-    fn from(value: String) -> Self {
-        Self {
-            oid: value,
-            _universe: PhantomData,
-        }
     }
 }
