@@ -7,16 +7,23 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
-    pub mono: RepoConfig,
-    pub subtree: RepoConfig,
+    pub mono: MonoConfig,
+    pub subtree: SubtreeConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RepoConfig {
+pub struct MonoConfig {
     pub org: String,
     pub repo: String,
     // FIXME: we need a smart url parser here
     pub url: String,
+    pub filter: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SubtreeConfig {
+    pub org: String,
+    pub repo: String,
     #[serde(default)]
     pub filter: String,
 }
@@ -24,16 +31,15 @@ pub struct RepoConfig {
 impl Config {
     pub fn template() -> Self {
         Self {
-            mono: RepoConfig {
+            mono: MonoConfig {
                 org: "<organization name>".to_string(),
                 repo: "<mono repository name>".to_string(),
                 url: "url to the repository, both http & ssh are okay".to_string(),
                 filter: "<mono filter>".to_string(),
             },
-            subtree: RepoConfig {
+            subtree: SubtreeConfig {
                 org: "<organization name>".to_string(),
                 repo: "<subtree repository name>".to_string(),
-                url: "url to the repository, both http & ssh are okay".to_string(),
                 filter:
                     "<subtree filter> (optional, if you want to mirror the entire subtree repo)"
                         .to_string(),
