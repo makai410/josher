@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use xshell::{Cmd, Shell, cmd};
 
-use crate::JOSH_VERSION;
 use crate::refs::Refspec;
-use crate::utils::{collect_args, install_dir};
+use crate::utils::collect_args;
 
 /// Open a git repository.
 pub fn open_repo(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo> {
@@ -16,13 +15,7 @@ pub fn open_repo(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo> 
     ))?;
     let sh = Shell::new()?;
     sh.change_dir(&path);
-    let filter_bin = get_josh_filter_bin(&path, verbose)?;
-    let repo = Repo {
-        sh,
-        filter_bin,
-        path,
-        verbose,
-    };
+    let repo = Repo { sh, path, verbose };
     repo.read(["rev-parse", "--git-dir"])
         .context(format!("{} is not a Git repository", repo.path.display()))?;
     Ok(repo)
@@ -30,7 +23,6 @@ pub fn open_repo(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo> 
 
 pub struct Repo {
     sh: Shell,
-    filter_bin: JoshFilterBin,
     path: PathBuf,
     verbose: bool,
 }
@@ -108,25 +100,13 @@ impl Repo {
         }
     }
 
-    pub fn filter(&self, filter: &str, refspec: &str, update_to: &str) -> anyhow::Result<()> {
-        self.filter_bin
-            .run(&[filter, refspec, "--update", update_to])?;
-        Ok(())
-    }
-
-    pub fn reverse_filter(
-        &self,
-        filter: &str,
-        refspec: &str,
-        update_to: &str,
-        check_roundtrip: bool,
-    ) -> anyhow::Result<()> {
-        let mut args = vec![filter, refspec, "--update", update_to, "--reverse"];
-        if check_roundtrip {
-            args.push("--check-roundtrip");
-        }
-        self.filter_bin.run(args)?;
-        Ok(())
+    pub fn run_by_path<I, S>(&self, path: impl AsRef<Path>, args: I) -> anyhow::Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let command = self.command_by_path(path, args);
+        command.run().context("cannot run command")
     }
 
     fn read<I, S>(&self, args: I) -> anyhow::Result<String>
@@ -147,7 +127,7 @@ impl Repo {
         command.run().context("cannot run command")
     }
 
-    fn command<'a, I, S>(&'a self, args: I) -> Cmd<'a>
+    fn command<I, S>(&self, args: I) -> Cmd<'_>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -157,67 +137,14 @@ impl Repo {
         cmd.set_quiet(!self.verbose);
         cmd
     }
-}
 
-fn get_josh_filter_bin(
-    working_path: impl AsRef<Path>,
-    verbose: bool,
-) -> anyhow::Result<JoshFilterBin> {
-    let install_dir = install_dir();
-    let josh_filter_path = install_dir.join("bin").join("josh-filter");
-    let install_dir = install_dir.to_str().expect("the path is invalid unicode");
-    println!(
-        "Updating/installing josh-filter binary into `{}`...",
-        josh_filter_path.display()
-    );
-
-    let sh = Shell::new()?;
-    sh.change_dir(&working_path);
-    let args = &[
-        "+stable",
-        "install",
-        "--locked",
-        "--git",
-        "https://github.com/josh-project/josh",
-        "--tag",
-        JOSH_VERSION,
-        "--root",
-        install_dir,
-        "josh-cli",
-    ];
-    let mut cmd = cmd!(sh, "cargo {args...}");
-    cmd.set_quiet(!verbose);
-    cmd.run().context("cannot install josh-filter binary")?;
-    Ok(JoshFilterBin {
-        sh,
-        path: josh_filter_path,
-        verbose,
-    })
-}
-
-struct JoshFilterBin {
-    sh: Shell,
-    path: PathBuf,
-    verbose: bool,
-}
-
-impl JoshFilterBin {
-    fn run<I, S>(&self, args: I) -> anyhow::Result<()>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<OsStr>,
-    {
-        let command = self.command(args);
-        command.run().context("cannot run command")
-    }
-
-    fn command<'a, I, S>(&'a self, args: I) -> Cmd<'a>
+    fn command_by_path<I, S>(&self, path: impl AsRef<Path>, args: I) -> Cmd<'_>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
         let args = collect_args(args);
-        let mut cmd = self.sh.cmd(&self.path).args(args);
+        let mut cmd = self.sh.cmd(&path).args(args);
         cmd.set_quiet(!self.verbose);
         cmd
     }
