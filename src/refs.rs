@@ -5,7 +5,7 @@ pub struct Refspec {
 }
 
 impl Refspec {
-    pub fn new(run_id: String, tag: String) -> Self {
+    pub fn new(run_id: &str, tag: &str) -> Self {
         Self {
             val: format!("refs/josher/{run_id}/{tag}"),
         }
@@ -24,8 +24,23 @@ impl Deref for Refspec {
         &self.val
     }
 }
+
 impl Display for Refspec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.val)
+    }
+}
+
+pub enum RefTag {
+    DestinationBase,
+    SourceHead,
+}
+
+impl RefTag {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            RefTag::DestinationBase => "destination-base",
+            RefTag::SourceHead => "source-head",
+        }
     }
 }

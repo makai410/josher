@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -8,26 +9,85 @@ use crate::refs::Refspec;
 use crate::utils::collect_args;
 
 /// Open a git repository.
-pub fn open_repo(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo> {
+pub fn open_repo<T>(path: impl AsRef<Path>, verbose: bool) -> anyhow::Result<Repo<T>> {
     let path = path.as_ref().canonicalize().context(format!(
         "cannot resolve repository at {}",
         path.as_ref().display()
     ))?;
     let sh = Shell::new()?;
     sh.change_dir(&path);
-    let repo = Repo { sh, path, verbose };
-    repo.read(["rev-parse", "--git-dir"])
+    sh.set_var(
+        "GIT_DIR",
+        path.to_str()
+            .expect(&format!("{} is invalid unicode", path.display())),
+    );
+    let repo = Repo {
+        sh,
+        path,
+        verbose,
+        _universe: PhantomData,
+    };
+    repo.read(&["rev-parse", "--git-dir"])
         .context(format!("{} is not a Git repository", repo.path.display()))?;
     Ok(repo)
 }
 
-pub struct Repo {
+pub fn open_or_create_bare_repo<T>(
+    path: impl AsRef<Path>,
+    verbose: bool,
+) -> anyhow::Result<Repo<T>> {
+    let path = path.as_ref().canonicalize().context(format!(
+        "cannot resolve path at {}",
+        path.as_ref().display()
+    ))?;
+    let sh = Shell::new()?;
+    sh.change_dir(&path);
+    sh.set_var(
+        "GIT_DIR",
+        path.to_str()
+            .expect(&format!("{} is invalid unicode", path.display())),
+    );
+    let repo = Repo {
+        sh,
+        path,
+        verbose,
+        _universe: PhantomData,
+    };
+
+    // FIXME: eventually we need to fix this. this is looking terrible.
+    match repo.read(&["rev-parse", "--is-bare-repository"]) {
+        Ok(res) => {
+            if res == "false" {
+                anyhow::bail!(
+                    "{} is a Git repository, but somehow is NOT a bare repository!",
+                    repo.path.display()
+                );
+            }
+            Ok(repo)
+        }
+        Err(_) => {
+            repo.run(&["--bare", "init"])
+                .context("cannot init bare repo")?;
+
+            repo.read(["rev-parse", "--is-bare-repository"])
+                .context(format!(
+                    "{} is not a Git bare repository, `git --bare init` somehow failed",
+                    repo.path.display()
+                ))?;
+
+            Ok(repo)
+        }
+    }
+}
+
+pub struct Repo<T> {
     sh: Shell,
     path: PathBuf,
     verbose: bool,
+    _universe: PhantomData<T>,
 }
 
-impl Repo {
+impl<T> Repo<T> {
     pub fn path(&self) -> &Path {
         &self.path
     }

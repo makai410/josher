@@ -15,7 +15,7 @@ pub enum SyncResBikeshed<Dest> {
 
 /// The generic synchronization model.
 pub fn synchronize<Source, Dest>(
-    repo: &Repo,
+    repo: &Repo<Virtual>,
     source_projection: &impl Projection<Source>,
     dest_projection: &impl Projection<Dest>,
     source: &Commit<Source>,
@@ -57,7 +57,7 @@ pub fn synchronize<Source, Dest>(
 pub trait Integration {
     fn integrate(
         &self,
-        repo: &Repo,
+        repo: &Repo<Virtual>,
         current: &Commit<Virtual>,
         incoming: &Commit<Virtual>,
     ) -> anyhow::Result<Option<Commit<Virtual>>>;

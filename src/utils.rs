@@ -6,6 +6,8 @@ use std::{
 use directories::ProjectDirs;
 use uuid::Uuid;
 
+use crate::config::Config;
+
 pub fn install_dir() -> PathBuf {
     let Some(prj_dirs) = ProjectDirs::from("dev", "makai410", "josher") else {
         eprintln!("Oops!!! Fallback");
@@ -30,6 +32,10 @@ where
     args.into_iter()
         .map(|arg| arg.as_ref().to_owned())
         .collect()
+}
+
+pub fn mono_id(config: &Config) -> String {
+    format!("{}-{}", &config.mono.org, &config.mono.repo)
 }
 
 pub fn gen_runid() -> String {

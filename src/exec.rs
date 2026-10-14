@@ -3,15 +3,17 @@ use anyhow::Context;
 use crate::{
     Commit,
     config::Config,
-    josh::{JoshFilter, Virtual},
+    josh::{JoshFilter, Virtual, get_josh_filter_bin},
+    refs::{RefTag, Refspec},
     sync::Integration,
     tools::{self, Repo},
-    utils::{gen_runid, workspace_dir},
+    utils::{gen_runid, mono_id, workspace_dir},
 };
 
-struct ExecCtxt {
+struct ExecCtxt<'a> {
     config: Config,
-    workspace: Workspace,
+    workspace: &'a Workspace,
+    run_id: String,
     verbose: bool,
 }
 
@@ -19,20 +21,22 @@ pub fn run(mode: Mode, config: Config, verbose: bool) -> anyhow::Result<()> {
     // Assumes that we are right in the subtree repo.
     let repo_path =
         std::env::current_dir().context("cannot determine the current repository path")?;
-    let subtree_repo = tools::open_repo(repo_path, verbose)?;
-    let mono_repo = tools::open_repo("path/to/monorepo", verbose)?;
-    let subtree_filter = JoshFilter::<Subtree>::new(config.subtree.filter.clone(), &subtree_repo);
-    let mono_filter = JoshFilter::<Mono>::new(config.mono.filter.clone(), &mono_repo);
+    let subtree_repo = tools::open_repo::<Subtree>(repo_path, verbose)?;
+    let workspace = Workspace::open_or_create(verbose, mono_id(&config))?;
+    let bin = get_josh_filter_bin(&workspace.repo, verbose)?;
+    let subtree_filter = JoshFilter::<Subtree>::new(config.subtree.filter.clone(), &bin);
+    let mono_filter = JoshFilter::<Mono>::new(config.mono.filter.clone(), &bin);
 
-    let workspace = Workspace::open_or_create(verbose)?;
     let exec_ctxt = ExecCtxt {
         config,
-        workspace,
+        workspace: &workspace,
+        run_id: gen_runid(),
         verbose,
     };
+
     match mode {
         Mode::Pull => {
-            exec_ctxt.pull()?;
+            exec_ctxt.pull(subtree_repo, subtree_filter, mono_filter)?;
         }
         Mode::Push => {
             exec_ctxt.push()?;
@@ -41,13 +45,34 @@ pub fn run(mode: Mode, config: Config, verbose: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl ExecCtxt {
-    fn pull(&self) -> anyhow::Result<()> {
+impl<'a> ExecCtxt<'a> {
+    fn pull(
+        &self,
+        subtree_repo: Repo<Subtree>,
+        subtree_filter: JoshFilter<Subtree>,
+        mono_filter: JoshFilter<Mono>,
+    ) -> anyhow::Result<()> {
+        // Create a new branch in subtree repo
+        // Prepare commit in subtree repo...
+
+        // fetch subtree repo HEAD into workspace
+        self.workspace.repo.fetch(
+            &subtree_repo.path().to_str().expect(&format!(
+                "{} is invalid unicode",
+                &subtree_repo.path().display()
+            )),
+            &[self.refspec(RefTag::DestinationBase).as_ref()],
+        )?;
+
         Ok(())
     }
 
     fn push(&self) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    fn refspec(&self, tag: RefTag) -> Refspec {
+        Refspec::new(&self.run_id, tag.as_str())
     }
 }
 
@@ -62,19 +87,15 @@ pub enum Mode {
 }
 
 struct Workspace {
-    repo: Repo,
-    run_id: String,
+    repo: Repo<Virtual>,
+    id: String,
 }
 
 impl Workspace {
-    // FIXME: this is unfortunate..
-    pub fn open_or_create(verbose: bool) -> anyhow::Result<Self> {
-        let path = workspace_dir();
-        let repo = tools::open_repo(path, verbose)?;
-        Ok(Self {
-            repo,
-            run_id: gen_runid(),
-        })
+    pub fn open_or_create(verbose: bool, id: String) -> anyhow::Result<Self> {
+        let path = workspace_dir().join(&id);
+        let repo = tools::open_or_create_bare_repo(path, verbose)?;
+        Ok(Self { repo, id })
     }
 }
 
@@ -83,7 +104,7 @@ pub struct FastForward;
 impl Integration for FastForward {
     fn integrate(
         &self,
-        repo: &Repo,
+        repo: &Repo<Virtual>,
         current: &Commit<Virtual>,
         incoming: &Commit<Virtual>,
     ) -> anyhow::Result<Option<Commit<Virtual>>> {
@@ -105,7 +126,7 @@ pub struct MergeVirtual;
 impl Integration for MergeVirtual {
     fn integrate(
         &self,
-        repo: &Repo,
+        repo: &Repo<Virtual>,
         current: &Commit<Virtual>,
         incoming: &Commit<Virtual>,
     ) -> anyhow::Result<Option<Commit<Virtual>>> {
@@ -119,7 +140,7 @@ impl Integration for MergeVirtual {
 }
 
 fn merge_virtual_histories(
-    repo: &Repo,
+    repo: &Repo<Virtual>,
     current: &Commit<Virtual>,
     incoming: &Commit<Virtual>,
 ) -> anyhow::Result<Commit<Virtual>> {

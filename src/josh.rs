@@ -1,22 +1,24 @@
 use std::{ffi::OsStr, marker::PhantomData, path::PathBuf};
 
 use anyhow::Context;
-use xshell::{Cmd, Shell, cmd};
+use xshell::{Shell, cmd};
 
 use crate::{Commit, JOSH_VERSION, sync::Projection, tools::Repo, utils::install_dir};
 
 /// Marker for filtered things.
 pub struct Virtual;
 
-// FIXME: is it really necessary to have a borrow??
 pub struct JoshFilter<'bin, 'repo, T> {
     inner: String,
     bin: &'bin JoshFilterBin<'repo>,
     _universe: PhantomData<T>,
 }
 
-struct JoshFilterBin<'repo> {
-    repo: &'repo Repo,
+pub struct JoshFilterBin<'repo> {
+    /// Repository we want the `josh-filter` binary to work in.
+    /// `Repo<Virtual>` is right here because we only want it
+    /// to work in the virtual repository.
+    repo: &'repo Repo<Virtual>,
     path: PathBuf,
 }
 
@@ -93,9 +95,9 @@ impl<'repo> JoshFilterBin<'repo> {
 }
 
 pub fn get_josh_filter_bin<'repo>(
-    repo: &'repo Repo,
+    repo: &'repo Repo<Virtual>,
     verbose: bool,
-) -> anyhow::Result<JoshFilterBin> {
+) -> anyhow::Result<JoshFilterBin<'repo>> {
     let install_dir = install_dir();
     let path = install_dir.join("bin").join("josh-filter");
     let install_dir = install_dir.to_str().expect("the path is invalid unicode");
