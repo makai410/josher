@@ -3,7 +3,12 @@ use std::{ffi::OsStr, marker::PhantomData, path::PathBuf};
 use anyhow::Context;
 use xshell::{Shell, cmd};
 
-use crate::{Commit, JOSH_VERSION, sync::Projection, tools::Repo, utils::install_dir};
+use crate::{
+    Commit, JOSH_VERSION,
+    git::Repo,
+    sync::Projection,
+    utils::{collect_args, install_dir},
+};
 
 /// Marker for filtered things.
 pub struct Virtual;
@@ -11,7 +16,7 @@ pub struct Virtual;
 pub struct JoshFilter<'bin, 'repo, T> {
     inner: String,
     bin: &'bin JoshFilterBin<'repo>,
-    _universe: PhantomData<T>,
+    _universe: PhantomData<fn() -> T>,
 }
 
 pub struct JoshFilterBin<'repo> {
@@ -19,7 +24,9 @@ pub struct JoshFilterBin<'repo> {
     /// `Repo<Virtual>` is right here because we only want it
     /// to work in the virtual repository.
     repo: &'repo Repo<Virtual>,
+    sh: Shell,
     path: PathBuf,
+    verbose: bool,
 }
 
 impl<'bin, 'repo, T> JoshFilter<'bin, 'repo, T> {
@@ -31,33 +38,23 @@ impl<'bin, 'repo, T> JoshFilter<'bin, 'repo, T> {
         }
     }
 
-    pub fn apply(&self, commit: &Commit<T>) -> Commit<Virtual> {
+    fn apply(&self, from: &Ref<T>, to: &Ref<Virtual>) -> anyhow::Result<()> {
         // FIXME: check this read output
-        // FIXME: this should take a ref instead of a commit
         // FIXME: seems that the exit code here is kinda weird
-        // FIXME: We need a refspec system
-        let oid = self
-            .bin
-            .filter(&self.inner, "todo", "todo")
-            .expect("josh-filter failed to run");
-        Commit::<Virtual>::from("todo".to_string())
+        self.bin.filter(&self.inner, from, to)
     }
 
-    pub fn reverse_apply(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
+    fn reverse_apply(&self, base: &Ref<T>, from: &Ref<Virtual>) -> anyhow::Result<()> {
         // FIXME: I'm 99% sure there's something buggy
         // FIXME: this should take a ref instead of a commit
         // FIXME: We need a refspec system
-        let oid = self
-            .bin
-            .reverse_filter(&self.inner, "todo", "todo", true)
-            .expect("josh-filter failed to run");
-        Commit::<T>::from("todo".to_string())
+        self.bin.reverse_filter(&self.inner, base, from, true)
     }
 }
 
 impl<'bin, 'repo, T> Projection<T> for JoshFilter<'bin, 'repo, T> {
-    fn project(&self, commit: &Commit<T>) -> Commit<Virtual> {
-        self.apply(commit)
+    fn project(&self, ref_: &Ref<T>) -> Ref<Virtual> {
+        self.apply(ref_)
     }
     fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
         self.reverse_apply(base, from)
@@ -65,19 +62,19 @@ impl<'bin, 'repo, T> Projection<T> for JoshFilter<'bin, 'repo, T> {
 }
 
 impl<'repo> JoshFilterBin<'repo> {
-    pub fn filter(&self, filter: &str, refspec: &str, update_to: &str) -> anyhow::Result<()> {
-        self.run(&[filter, refspec, "--update", update_to])?;
+    pub fn filter(&self, filter: &str, from: &str, update_to: &str) -> anyhow::Result<()> {
+        self.run(&[filter, from, "--update", update_to])?;
         Ok(())
     }
 
     pub fn reverse_filter(
         &self,
         filter: &str,
-        refspec: &str,
+        base: &str,
         update_to: &str,
         check_roundtrip: bool,
     ) -> anyhow::Result<()> {
-        let mut args = vec![filter, refspec, "--update", update_to, "--reverse"];
+        let mut args = vec![filter, base, "--update", update_to, "--reverse"];
         if check_roundtrip {
             args.push("--check-roundtrip");
         }
@@ -90,7 +87,10 @@ impl<'repo> JoshFilterBin<'repo> {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        self.repo.run_by_path(&self.path, args)
+        let args = collect_args(args);
+        let mut cmd = self.sh.cmd(&self.path).args(args);
+        cmd.set_quiet(!self.verbose);
+        cmd.run().context("cannot run command")
     }
 }
 
@@ -123,5 +123,10 @@ pub fn get_josh_filter_bin<'repo>(
     let mut cmd = cmd!(sh, "cargo {args...}");
     cmd.set_quiet(!verbose);
     cmd.run().context("cannot install josh-filter binary")?;
-    Ok(JoshFilterBin { repo, path })
+    Ok(JoshFilterBin {
+        repo,
+        sh,
+        path,
+        verbose,
+    })
 }

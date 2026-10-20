@@ -11,6 +11,7 @@ name = "josher"
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 directories = "6.0.0"
+git2 = "0.21.0"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 uuid = { version = "1.28.0", features = ["v7"] }
