@@ -4,29 +4,20 @@ use anyhow::Context;
 use xshell::{Shell, cmd};
 
 use crate::{
-    Commit, JOSH_VERSION,
+    JOSH_VERSION,
     git::Repo,
-    sync::Projection,
+    sync::core::Projection,
     utils::{collect_args, install_dir},
 };
 
 /// Marker for filtered things.
-pub struct Virtual;
+// FIXME: We'd need this when we have typed refs.
+// pub struct Virtual;
 
 pub struct JoshFilter<'bin, 'repo, T> {
     inner: String,
     bin: &'bin JoshFilterBin<'repo>,
     _universe: PhantomData<fn() -> T>,
-}
-
-pub struct JoshFilterBin<'repo> {
-    /// Repository we want the `josh-filter` binary to work in.
-    /// `Repo<Virtual>` is right here because we only want it
-    /// to work in the virtual repository.
-    repo: &'repo Repo<Virtual>,
-    sh: Shell,
-    path: PathBuf,
-    verbose: bool,
 }
 
 impl<'bin, 'repo, T> JoshFilter<'bin, 'repo, T> {
@@ -38,43 +29,82 @@ impl<'bin, 'repo, T> JoshFilter<'bin, 'repo, T> {
         }
     }
 
-    fn apply(&self, from: &Ref<T>, to: &Ref<Virtual>) -> anyhow::Result<()> {
-        // FIXME: check this read output
+    fn apply(
+        &self,
+        from: &git2::Reference<'repo>,
+        to: &git2::Reference<'repo>,
+    ) -> anyhow::Result<()> {
+        // FIXME: check the read output
         // FIXME: seems that the exit code here is kinda weird
         self.bin.filter(&self.inner, from, to)
     }
 
-    fn reverse_apply(&self, base: &Ref<T>, from: &Ref<Virtual>) -> anyhow::Result<()> {
+    fn reverse_apply(
+        &self,
+        base: &git2::Reference<'repo>,
+        from: &git2::Reference<'repo>,
+    ) -> anyhow::Result<()> {
         // FIXME: I'm 99% sure there's something buggy
-        // FIXME: this should take a ref instead of a commit
-        // FIXME: We need a refspec system
         self.bin.reverse_filter(&self.inner, base, from, true)
     }
 }
 
-impl<'bin, 'repo, T> Projection<T> for JoshFilter<'bin, 'repo, T> {
-    fn project(&self, ref_: &Ref<T>) -> Ref<Virtual> {
-        self.apply(ref_)
+impl<'bin, 'repo, T> Projection<'repo, T> for JoshFilter<'bin, 'repo, T> {
+    fn project(&self, ref_: &git2::Reference<'repo>) -> git2::Reference<'repo> {
+        let update_to = self.bin.repo.reference_empty();
+        self.apply(ref_, &update_to).expect("cannot apply filter");
+        update_to
     }
-    fn reconstruct(&self, base: &Commit<T>, from: &Commit<Virtual>) -> Commit<T> {
+    fn reconstruct(
+        &self,
+        base: &git2::Reference<'repo>,
+        from: &git2::Reference<'repo>,
+    ) -> git2::Reference<'repo> {
         self.reverse_apply(base, from)
+            .expect("cannot reverse-apply filter");
+        // FIXME: this does feel pretty damn weird.
+        // The thing is that josh-filter will OVERWRITE the base reference here.
+        // I kinda don't want to change the signature of this method, since
+        // the current way is symmetric to `project`. I don't want to tweak it just
+        // bacause of the behaviors of Josh.
+        // I want to keep sync::core completely agnostic of Josh.
+        base.clone()
     }
 }
 
+pub struct JoshFilterBin<'repo> {
+    /// Repository we want the `josh-filter` binary to work in.
+    repo: &'repo Repo,
+    sh: Shell,
+    path: PathBuf,
+    verbose: bool,
+}
+
 impl<'repo> JoshFilterBin<'repo> {
-    pub fn filter(&self, filter: &str, from: &str, update_to: &str) -> anyhow::Result<()> {
-        self.run(&[filter, from, "--update", update_to])?;
+    pub fn filter(
+        &self,
+        filter: &str,
+        from: &git2::Reference<'repo>,
+        update_to: &git2::Reference<'repo>,
+    ) -> anyhow::Result<()> {
+        self.run(&[filter, from.name()?, "--update", update_to.name()?])?;
         Ok(())
     }
 
     pub fn reverse_filter(
         &self,
         filter: &str,
-        base: &str,
-        update_to: &str,
+        base: &git2::Reference<'repo>,
+        update_to: &git2::Reference<'repo>,
         check_roundtrip: bool,
     ) -> anyhow::Result<()> {
-        let mut args = vec![filter, base, "--update", update_to, "--reverse"];
+        let mut args = vec![
+            filter,
+            base.name()?,
+            "--update",
+            update_to.name()?,
+            "--reverse",
+        ];
         if check_roundtrip {
             args.push("--check-roundtrip");
         }
@@ -95,7 +125,7 @@ impl<'repo> JoshFilterBin<'repo> {
 }
 
 pub fn get_josh_filter_bin<'repo>(
-    repo: &'repo Repo<Virtual>,
+    repo: &'repo Repo,
     verbose: bool,
 ) -> anyhow::Result<JoshFilterBin<'repo>> {
     let install_dir = install_dir();

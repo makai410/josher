@@ -41,3 +41,7 @@ pub fn mono_id(config: &Config) -> String {
 pub fn gen_runid() -> String {
     Uuid::now_v7().simple().to_string()
 }
+
+pub fn gen_ref_name() -> String {
+    Uuid::now_v7().simple().to_string()
+}

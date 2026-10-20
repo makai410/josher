@@ -3,7 +3,7 @@ use anyhow::Context;
 use crate::{
     config::Config,
     git::{self, Repo},
-    josh::{JoshFilter, get_josh_filter_bin},
+    sync::{Integration, SyncDirection},
     utils::{mono_id, workspace_dir},
 };
 
@@ -44,35 +44,35 @@ struct ExecCtxt<'a> {
 }
 
 impl<'a> ExecCtxt<'a> {
+    // Src -> Dest: Mono -> Subtree
     fn pull(&self) -> anyhow::Result<()> {
         // Assumes that we are right in the subtree repo.
+        // FIXME: We need a config option for the path here.
         let repo_path =
             std::env::current_dir().context("cannot determine the current repository path")?;
         let subtree_repo = git::open_repo(repo_path)?;
         let repo = &self.workspace.repo;
-        let bin = get_josh_filter_bin(repo, self.verbose)?;
-        let subtree_filter = JoshFilter::<Subtree>::new(self.config.subtree.filter.clone(), &bin);
-        let mono_filter = JoshFilter::<Mono>::new(self.config.mono.filter.clone(), &bin);
-        // Create a new branch in subtree repo
-        // Prepare commit in subtree repo...
 
+        // fetch mono repo HEAD into workspace
+        let src_ref = repo.fetch("mono", &self.config.mono.url, "refs/heads/main")?;
+
+        // TODO: Create a new branch in subtree repo
+        // TODO: Prepare commit in subtree repo...
         // fetch subtree repo HEAD into workspace
         let subtree_repo_path = subtree_repo
             .path()
             .to_str()
             .expect("the path is not valid unicode");
-        let dest_ref = repo.fetch("subtree", subtree_repo_path, "HEAD", "todo")?;
-
-        // fetch mono repo HEAD into workspace
-        let src_ref = repo.fetch("mono", &self.config.mono.url, "refs/heads/main", "todo")?;
-
-        // sync::synchronize(
-        //     &mono_filter,
-        //     &subtree_filter,
-        //     &src_ref,
-        //     &dest_ref,
-        //     MergeVirtual,
-        // );
+        let dest_ref = repo.fetch("subtree", subtree_repo_path, "HEAD")?;
+        let _result = SyncDirection::<Mono, Subtree>::run(
+            self.config.mono.filter.clone(),
+            self.config.subtree.filter.clone(),
+            src_ref,
+            dest_ref,
+            repo,
+            MergeVirtual,
+            self.verbose,
+        )?;
 
         Ok(())
     }
@@ -115,22 +115,23 @@ impl Workspace {
 //     }
 // }
 
-// pub struct MergeVirtual;
+pub struct MergeVirtual;
 
-// impl Integration for MergeVirtual {
-//     fn integrate(
-//         &self,
-//         current: &Commit<Virtual>,
-//         incoming: &Commit<Virtual>,
-//     ) -> anyhow::Result<Option<Commit<Virtual>>> {
-//         if current == incoming {
-//             return Ok(None);
-//         }
+impl Integration for MergeVirtual {
+    fn integrate<'repo>(
+        &self,
+        current: &git2::Reference<'repo>,
+        incoming: &git2::Reference<'repo>,
+    ) -> anyhow::Result<Option<git2::Reference<'repo>>> {
+        if current == incoming {
+            return Ok(None);
+        }
 
-//         let merged = merge_virtual_histories(current, incoming)?;
-//         Ok(Some(merged))
-//     }
-// }
+        todo!()
+        // let merged = merge_virtual_histories(current, incoming)?;
+        // Ok(Some(merged))
+    }
+}
 
 // fn merge_virtual_histories(
 //     current: &Commit<Virtual>,
