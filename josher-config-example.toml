@@ -7,5 +7,5 @@ filter = ":/compiler/rustc_public:prefix=rustc_public"
 [subtree]
 org = "rust-lang"
 repo = "rustc_public"
-url = "git@github.com:rust-lang/rustc_public.git" # or https://github.com/rust-lang/rustc_public.git
+# We assume that we're right in the subtree repo
 filter = ":/rustc_public:prefix=rustc_public"

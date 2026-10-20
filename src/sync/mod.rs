@@ -9,6 +9,8 @@ use crate::{
 pub mod core;
 mod josh;
 
+// FIXME: Currently, the marker types here are entirely meaningless, which doesn't
+// provide any guarantees in type system...
 pub struct SyncDirection<Src, Dest> {
     _universe: std::marker::PhantomData<fn() -> (Src, Dest)>,
 }
